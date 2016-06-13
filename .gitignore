@@ -10,6 +10,11 @@
 # Normal rules
 #
 .*
+
+# add by zhYuan
+!.config
+!.gitignore
+
 *.o
 *.o.*
 *.a
