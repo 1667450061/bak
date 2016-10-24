@@ -694,6 +694,37 @@ struct platform_device comip_device_otg = {
 #endif
 
 #ifdef CONFIG_USB_COMIP_HCD
+/* DESC:	add by yuanzheng
+ * DATE:	2016.01.08
+ * */
+static struct resource comip_resource_hsic[] = {
+	[0] = {
+		.start = USB_HSIC_BASE,
+		.end = USB_HSIC_BASE + 0x3ffff,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = CTL_HSIC_PHY_POR_CTRL,
+		.end = CTL_HSIC_PHY_POR_CTRL + 0x30,
+		.flags = IORESOURCE_MEM,
+	},
+	[2] = {
+		.start = INT_USB_HSIC,
+		.end = INT_USB_HSIC,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+struct platform_device comip_device_hsic = {
+	.name = "comip-hcd",
+	.id = HSIC_HW,
+	.dev = {
+		.dma_mask = &comip_usb_dma_mask,
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
+	.num_resources = ARRAY_SIZE(comip_resource_hsic),
+	.resource = comip_resource_hsic,
+};
+
 static struct resource comip_resource_hcd[] = {
 	[0] = {
 		.start = USB0_BASE,
@@ -708,7 +739,8 @@ static struct resource comip_resource_hcd[] = {
 };
 struct platform_device comip_device_hcd = {
 	.name = "comip-hcd",
-	.id = -1,
+//	.id = -1,
+	.id = OTG_HW,
 	.dev = {
 		.dma_mask = &comip_usb_dma_mask,
 		.coherent_dma_mask = COMIP_DMA_BIT_MASK,
@@ -753,6 +785,7 @@ void __init comip_set_usb_info(struct comip_usb_platform_data *info)
 	comip_register_device(&comip_device_udc, &info->udc);
 #ifdef CONFIG_USB_COMIP_HCD
 	comip_register_device(&comip_device_hcd, &info->hcd);
+	comip_register_device(&comip_device_hsic,&info->hcd);
 #endif
 #ifdef CONFIG_USB_COMIP_HSIC
 	comip_register_device(&comip_device_hcd_hsic, &info->hcd);

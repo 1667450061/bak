@@ -64,6 +64,44 @@
  */
 
 /****************************************************************************/
+/** COMIP CTL registers */
+typedef struct comip_core_ctl_regs{
+		volatile uint32_t phyrstctl;
+		volatile uint32_t physuspend;
+		volatile uint32_t physta;
+		volatile uint32_t wkupintraw;
+		volatile uint32_t wkupintrsta;
+		volatile uint32_t wkupintren;
+		volatile uint32_t ctl;
+}comip_core_ctl_regs_t;
+
+typedef union ctl_data {
+    /** raw register data */
+    uint32_t d32;
+    /** register bits */
+    struct {
+        uint32_t if_select:1;
+        uint32_t reserved1_2:2;
+        uint32_t portreset:1;
+        uint32_t reserved4:1;
+        uint32_t utmiotg_dmpulldown:1;
+        uint32_t utmiotg_dppulldown:1;
+        uint32_t utml_hostdisconnect:1;
+        uint32_t ss_scaledown_mode:2;
+        uint32_t reserved10:1;
+        uint32_t loopbackenb:1;
+        uint32_t sleepm:1;
+        uint32_t txbitstuffen:1;
+        uint32_t txbitstuffenh:1;
+        uint32_t reserved15:1;
+        uint32_t txrpdtune:2;
+        uint32_t reserved18_19:2;
+        uint32_t txrputune:2;
+        uint32_t reserved22_23:2;
+        uint32_t txsrtune:4;
+        uint32_t reserved28_31:4;
+    } b;
+}ctl_data_t;
 
 /** COMIP_otg Core registers . 
  * The comip_core_global_regs structure defines the size

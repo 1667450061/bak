@@ -61,6 +61,9 @@
 #include "comip_hcd.h"
 
 #include <linux/dmapool.h>
+#include <linux/gpio.h>
+#include <plat/mfp.h>
+
 /**
  * Gets the endpoint number from a _bEndpointAddress argument. The endpoint is
  * qualified with its direction (possible 32 endpoints per device).
@@ -401,6 +404,7 @@ int hcd_init(struct platform_device *_dev)
 			* powering up VBUS, mapping of registers address space and power
 			* management.
 			*/
+                   if(_dev->id==OTG_HW){
 			phy = usb_get_transceiver();
 			if (!phy) {
 				dev_err(&_dev->dev, "unable to find transceiver\n");
@@ -414,6 +418,7 @@ int hcd_init(struct platform_device *_dev)
 				dev_err(&_dev->dev, "unable to register with transceiver\n");
 				goto error2;
 				}
+                      }
 #endif
 		comip_hcd_set_priv_data(comip_hcd, hcd);
     return 0;
@@ -542,10 +547,10 @@ speed = "LOW"; break; default:
     COMIP_PRINTF("  Max packet size: %d\n",
            usb_maxpacket(urb->dev, urb->pipe, usb_pipeout(urb->pipe)));
     COMIP_PRINTF("  Data buffer length: %d\n", urb->transfer_buffer_length);
-    COMIP_PRINTF("  Transfer buffer: %p, Transfer DMA: %d\n",
-           urb->transfer_buffer, (u32)urb->transfer_dma);
-    COMIP_PRINTF("  Setup buffer: %p, Setup DMA: %d\n",
-           urb->setup_packet, (u32)urb->setup_dma);
+    COMIP_PRINTF("  Transfer buffer: %p, Transfer DMA: %p\n",
+           urb->transfer_buffer, (void *)urb->transfer_dma);
+    COMIP_PRINTF("  Setup buffer: %p, Setup DMA: %p\n",
+           urb->setup_packet, (void *)urb->setup_dma);
     COMIP_PRINTF("  Interval: %d\n", urb->interval);
     if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
         int i;
@@ -693,23 +698,31 @@ static int urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
     COMIP_SPINLOCK_IRQSAVE(comip_hcd->lock, &flags);
 
+    if (!(urb->hcpriv))
+        goto out;
+
     comip_hcd_urb_dequeue(comip_hcd, urb->hcpriv);
 
     kfree(urb->hcpriv);
     urb->hcpriv = NULL;
-    COMIP_SPINUNLOCK_IRQRESTORE(comip_hcd->lock, flags);
 
+     COMIP_SPINUNLOCK(comip_hcd->lock);
     /* Higher layer software sets URB status. */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
     usb_hcd_giveback_urb(hcd, urb);
 #else
     usb_hcd_giveback_urb(hcd, urb, status);
 #endif
+
+    COMIP_SPINLOCK(comip_hcd->lock);
+
     if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {
         COMIP_PRINTF("Called usb_hcd_giveback_urb()\n");
         COMIP_PRINTF("  urb->status = %d\n", urb->status);
     }
 
+out:
+    COMIP_SPINUNLOCK_IRQRESTORE(comip_hcd->lock, flags);
     return 0;
 }
 
@@ -855,7 +868,8 @@ static int comip_hcd_driver_remove(struct platform_device *_dev)
         return -ENODEV;
     }
 #ifdef CONFIG_USB_COMIP_OTG
-    if (phy) {
+    
+    if ((_dev->id==OTG_HW) && phy) {
 			otg_set_host(phy->otg, NULL);
 			usb_put_transceiver(phy);
 		}
@@ -916,14 +930,17 @@ static int comip_hcd_driver_remove(struct platform_device *_dev)
  *
  * @param _dev Bus device
  */
+extern int comip_usb_power_set(int onoff);
+static int g_host_mode = 0;
+static int g_host_mode_hsic = 0;
+int comip_hcd_driver_start(struct platform_device *_dev);
+
 static int comip_hcd_driver_probe(struct platform_device *_dev)
 {
     int retval = 0;
     struct resource *iomem;
-    struct clk *clk=NULL;
-
-    dev_dbg(&_dev->dev, "comip_hcd_driver_probe(%p)\n", _dev);
-
+	//dev_dbg(&_dev->dev, "comip_hcd_driver_probe(%p)\n", _dev);
+	printk("comip_hcd_driver_probe(%p) id=%d\n", _dev,_dev->id);
     comip_hcd_dev = kzalloc(sizeof(comip_hcd_device_t), GFP_KERNEL);
     if (!comip_hcd_dev) {
         dev_err(&_dev->dev, "kmalloc of comip_hcd_device failed\n");
@@ -935,16 +952,26 @@ static int comip_hcd_driver_probe(struct platform_device *_dev)
     /*
      * Map the comip_otg Core memory into virtual address space.
      */
-    comip_hcd_dev->os_dep.base = NULL;
+    comip_hcd_dev->os_dep.base[0] = NULL;
     iomem = platform_get_resource(_dev, IORESOURCE_MEM, 0);
-    comip_hcd_dev->os_dep.base = ioremap(iomem->start, resource_size(iomem));
+    comip_hcd_dev->os_dep.base[0] = ioremap(iomem->start, resource_size(iomem));
 
-    if (!comip_hcd_dev->os_dep.base) {
+    if (!comip_hcd_dev->os_dep.base[0]) {
         dev_err(&_dev->dev, "ioremap() failed\n");
         kfree(comip_hcd_dev);
         return -ENOMEM;
     }
-
+    if(_dev->id==HSIC_HW){
+    comip_hcd_dev->os_dep.base[1] = NULL;
+    iomem = platform_get_resource(_dev, IORESOURCE_MEM, 1);
+    comip_hcd_dev->os_dep.base[1] = ioremap(iomem->start, resource_size(iomem));
+ 
+    if (!comip_hcd_dev->os_dep.base[1]) {
+        dev_err(&_dev->dev, "ioremap() failed\n");
+        kfree(comip_hcd_dev);
+        return -ENOMEM;
+    }
+     }
     comip_hcd_dev->irq =  platform_get_irq(_dev, 0);
 
     wake_lock_init(&comip_hcd_dev->wakelock, WAKE_LOCK_SUSPEND, "usb_host_wakelock");
@@ -954,18 +981,22 @@ static int comip_hcd_driver_probe(struct platform_device *_dev)
      * Initialize driver data to point to the global comip_otg
      * Device structure.
      */
+    if(_dev->id==HSIC_HW)
+    usb_power_set(1);
     comip_usb_power_set(1);
 
     dev_set_drvdata(&(_dev)->dev, comip_hcd_dev);
 
-	clk = clk_get(&_dev->dev, "usbotg_12m_clk");
+	/*clk = clk_get(&_dev->dev, "usbotg_12m_clk");
 	if (IS_ERR(clk)) {
         dev_err(&_dev->dev, "cannot get clock usbotg_12m_clk\n");
         retval = -EBUSY;
         goto fail;
-	}
+	}*/
 
-	comip_hcd_dev->core_if = comip_cil_init(comip_hcd_dev->os_dep.base, clk);
+     //if(_dev->id==HSIC_HW) return 0;
+//	comip_hcd_dev->core_if = comip_cil_init(comip_hcd_dev->os_dep.base[0], clk);
+    comip_hcd_dev->core_if = comip_cil_init(comip_hcd_dev->os_dep.base[0],comip_hcd_dev->os_dep.base[1],_dev);
     if (!comip_hcd_dev->core_if) {
         dev_err(&_dev->dev, "CIL initialization failed!\n");
         retval = -ENOMEM;
@@ -1011,10 +1042,19 @@ static int comip_hcd_driver_probe(struct platform_device *_dev)
         
     if(comip_is_device_mode(comip_hcd_dev->core_if)){
         COMIP_DEBUGPL(DBG_ANY, "%s device mode\n", __func__);
+        printk("%s:comip_hcd_dev->core_if->id=%d\n",__func__,comip_hcd_dev->core_if->type);
         comip_cil_uninit(comip_hcd_dev->core_if);
         comip_usb_power_set(0);
     }
     mutex_unlock(&comip_hcd_dev->muxlock);
+	if (_dev->id == HSIC_HW)	{
+                printk("enter hsic init\n");
+		/* default in host mode*/
+		comip_hcd_driver_start(_dev);
+	//	g_host_mode_hsic = 1;//must set after comip_hcd_driver_start
+                msleep(2000);
+//		chip_3503_reset();
+	}
     return 0;
 
 fail:
@@ -1023,7 +1063,7 @@ fail:
     mutex_unlock(&comip_hcd_dev->muxlock);
     return retval;
 }
-static int g_host_mode = 0;
+//static int g_host_mode = 0;
 extern int32_t comip_hcd_disconnect_cb(void *p);
 int comip_hcd_driver_stop(struct platform_device *_dev)
 {
@@ -1032,22 +1072,34 @@ int comip_hcd_driver_stop(struct platform_device *_dev)
 	comip_hcd_t *comip_hcd = hcd_to_comip_hcd(hcd);
 	comip_hcd_device_t *hcd_dev = comip_hcd_dev;
 	
-printk("LZS %s: %d, enter\n", __func__, __LINE__);
-
+printk("LZS %s: %d, enter:_dev->id=%d\n", __func__, __LINE__,_dev->id);
+       if(_dev->id==OTG_HW){
 	if(comip_is_device_mode(comip_hcd->core_if)&& (!g_host_mode)){
 		INFO( "%s device mode(%d,%d)\n", __func__,comip_is_device_mode(comip_hcd->core_if),g_host_mode);
 		goto out;
 	}
-    COMIP_SPINLOCK_IRQSAVE(comip_hcd->lock, &flags);
 	g_host_mode = 0;
+       }
+      else if(_dev->id==HSIC_HW){
+        if(!g_host_mode_hsic)
+           goto out;
+	g_host_mode_hsic = 0;
+      }
+    COMIP_SPINLOCK_IRQSAVE(comip_hcd->lock, &flags);
 	comip_hcd->flags.b.port_enable_change = 1;
 	comip_hcd_disconnect_cb(comip_hcd);
 	mdelay(10);
+       if(_dev->id==HSIC_HW)
+	comip_cil_uninit_hsic(comip_hcd->core_if);
+       else
 	comip_cil_uninit(comip_hcd->core_if);
 
 	COMIP_SPINUNLOCK_IRQRESTORE(comip_hcd->lock, flags);
 	mdelay(100);
 	comip_usb_power_set(0);
+       if(_dev->id==HSIC_HW)
+        usb_power_set(0);
+        if(_dev->id==OTG_HW)
 	wake_unlock(&hcd_dev->wakelock);
 	INFO( "%s end\n", __func__);
 out:
@@ -1062,23 +1114,43 @@ int comip_hcd_driver_start(struct platform_device *_dev)
 	comip_hcd_device_t *hcd_dev = comip_hcd_dev;
 
 printk("LZS %s: %d, enter\n", __func__, __LINE__);
-
-
-	if(comip_is_device_mode(comip_hcd->core_if)||g_host_mode){
-		INFO("%s device mode(%d,%d)\n", __func__,comip_is_device_mode(comip_hcd->core_if),g_host_mode);
+ 
+       if(_dev->id==OTG_HW)
+	wake_lock(&hcd_dev->wakelock);
+       if(_dev->id==OTG_HW){
+	if((comip_is_device_mode(comip_hcd->core_if)||g_host_mode)){
+		printk("%s device mode(%d,%d)\n", __func__,comip_is_device_mode(comip_hcd->core_if),g_host_mode);
 		goto out;
 	}
-	wake_lock(&hcd_dev->wakelock);
+        comip_cil_uninit(comip_hcd->core_if);
+       }
+       else if(_dev->id==HSIC_HW){
+	if(g_host_mode_hsic){
+		printk("%s device mode(%d,%d)\n", __func__,comip_is_device_mode(comip_hcd->core_if),g_host_mode);
+		goto out;
+	}
+      }
+     printk("enter %s:id=%d\n",__func__,_dev->id);
+
+    if(_dev->id==HSIC_HW)
+  	usb_power_set(1);
 	comip_usb_power_set(1);
 	mdelay(100);
 	INFO("%s init_reg\n", __func__);
-    COMIP_SPINLOCK_IRQSAVE(comip_hcd->lock, &flags);
+    	COMIP_SPINLOCK_IRQSAVE(comip_hcd->lock, &flags);
+    if(_dev->id==HSIC_HW)
+	set_usb_init_reg_hsic(comip_hcd->core_if,comip_hcd->core_if->type);
+    else
 	set_usb_init_reg(comip_hcd->core_if);
 	/* Restore USB PHY settings and enable the controller. */
 	comip_core_init(comip_hcd->core_if);
 	comip_enable_global_interrupts(comip_hcd->core_if);
 	_start(comip_hcd);
-	g_host_mode = 1;
+      
+    if(_dev->id==HSIC_HW)
+	g_host_mode_hsic = 1;
+    else
+        g_host_mode=1;
 	COMIP_SPINUNLOCK_IRQRESTORE(comip_hcd->lock, flags);
 	INFO("%s end\n", __func__);
 out:
@@ -1087,12 +1159,17 @@ out:
 
 static int comip_hcd_driver_suspend(struct platform_device *pdev, pm_message_t state)
 {
+	struct usb_hcd *hcd = dev_get_drvdata(&(pdev)->dev);
+	comip_hcd_t *comip_hcd = hcd_to_comip_hcd(hcd);
+	comip_cil_suspend(comip_hcd->core_if);
 	return 0;
-
 }
 
 static int comip_hcd_driver_resume(struct platform_device *pdev)
 {
+	struct usb_hcd *hcd = dev_get_drvdata(&(pdev)->dev);
+	comip_hcd_t *comip_hcd = hcd_to_comip_hcd(hcd);
+	comip_cil_resume(comip_hcd->core_if);
 	return 0;
 }
 /**

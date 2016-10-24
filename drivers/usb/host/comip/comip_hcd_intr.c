@@ -111,6 +111,9 @@ int32_t comip_hcd_handle_intr(comip_hcd_t * comip_hcd)
                 comip_hcd_handle_disconnect_intr
                 (comip_hcd);
         }
+        if (gintsts.b.wkupintr) {
+            retval |= comip_hcd_handle_wakeup_detected_intr(comip_hcd);
+        }
 #ifdef DEBUG
 #ifndef DEBUG_SOF
         if (gintsts.d32 != COMIP_SOF_INTR_MASK)
@@ -519,6 +522,35 @@ int32_t comip_hcd_handle_hc_intr(comip_hcd_t * comip_hcd)
     return retval;
 }
 
+int32_t comip_hcd_handle_wakeup_detected_intr(comip_hcd_t * comip_hcd)
+{
+    gintsts_data_t gintsts;
+    COMIP_DEBUGPL(DBG_ANY,
+            "++Resume and Remote Wakeup Detected Interrupt++\n");
+
+    COMIP_PRINTF("%s lxstate = %d\n", __func__, comip_hcd->core_if->lx_state);
+
+    if (comip_is_host_mode(comip_hcd->core_if)) {
+        if (comip_hcd->core_if->lx_state != COMIP_L1) {
+            pcgcctl_data_t pcgcctl = {.d32 = 0 };
+ COMIP_PRINTF("%s %d lxstate = %d\n", __func__,__LINE__, comip_hcd->core_if->lx_state);
+            /* Restart the Phy Clock */
+            pcgcctl.b.stoppclk = 1;
+            COMIP_MODIFY_REG32(comip_hcd->core_if->pcgcctl, pcgcctl.d32, 0);
+            COMIP_TIMER_SCHEDULE(comip_hcd->core_if->wkp_timer, 71);
+        } else {
+            /** Change to L0 state*/
+            comip_hcd->core_if->lx_state = COMIP_L0;
+        }
+    }
+
+    /* Clear interrupt */
+    gintsts.d32 = 0;
+    gintsts.b.wkupintr = 1;
+    COMIP_WRITE_REG32(&comip_hcd->core_if->core_global_regs->gintsts, gintsts.d32);
+
+    return 1;
+}
 /**
  * Gets the actual length of a transfer after the transfer halts. _halt_status
  * holds the reason for the halt.
@@ -1610,10 +1642,10 @@ static int32_t handle_hc_ahberr_intr(comip_hcd_t * hcd,
     COMIP_ERROR("  Max packet size: %d\n",
           comip_hcd_get_mps(&urb->pipe_info));
     COMIP_ERROR("  Data buffer length: %d\n", urb->length);
-    COMIP_ERROR("  Transfer buffer: %p, Transfer DMA: %d\n",
-          urb->buf, (u32)urb->dma);
-    COMIP_ERROR("  Setup buffer: %p, Setup DMA: %d\n",
-          urb->setup_packet, (u32)urb->setup_dma);
+    COMIP_ERROR("  Transfer buffer: %p, Transfer DMA: %p\n",
+          urb->buf, (void *)urb->dma);
+    COMIP_ERROR("  Setup buffer: %p, Setup DMA: %p\n",
+          urb->setup_packet, (void *)urb->setup_dma);
     COMIP_ERROR("  Interval: %d\n", urb->interval);
 
     /* Core haltes the channel for Descriptor DMA mode */

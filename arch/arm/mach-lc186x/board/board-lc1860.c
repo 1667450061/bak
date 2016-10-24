@@ -513,7 +513,7 @@ static struct mfp_pin_cfg comip_mfp_cfg[] = {
 	{MFP_PIN_GPIO(107), 	MFP_PIN_MODE_GPIO},
 	{MFP_PIN_GPIO(105), 	MFP_PIN_MODE_GPIO},
 	{MFP_PIN_GPIO(104), 	MFP_PIN_MODE_GPIO},
-	{MFP_PIN_GPIO(102), 	MFP_PIN_MODE_GPIO},
+	{MFP_PIN_GPIO(102), 	MFP_PIN_MODE_GPIO},		//for VHSIC_1V2 enable
 };
 
 static struct mfp_pull_cfg comip_mfp_pull_cfg[] = {
@@ -558,7 +558,7 @@ static struct mfp_pull_cfg comip_mfp_pull_cfg[] = {
 	{MFP_PIN_GPIO(107), 	MFP_PULL_DOWN},
 	{MFP_PIN_GPIO(105), 	MFP_PULL_DOWN},
 	{MFP_PIN_GPIO(104), 	MFP_PULL_DOWN},
-	{MFP_PIN_GPIO(102), 	MFP_PULL_DOWN},
+	{MFP_PIN_GPIO(102), 	MFP_PULL_UP},		//modified by zhYuan
 	{MFP_PIN_GPIO(167), 	MFP_PULL_DISABLE},
 	{MFP_PIN_GPIO(168), 	MFP_PULL_DISABLE},
 	{MFP_PIN_GPIO(230), 	MFP_PULL_DOWN},
@@ -595,7 +595,7 @@ static struct mfp_gpio_cfg comip_init_mfp_lp_gpio_cfg[] = {
 	{MFP_PIN_GPIO(107),		MFP_GPIO_INPUT},
 	{MFP_PIN_GPIO(105),		MFP_GPIO_INPUT},
 	{MFP_PIN_GPIO(104),		MFP_GPIO_INPUT},
-	{MFP_PIN_GPIO(102),		MFP_GPIO_INPUT},
+	{MFP_PIN_GPIO(102),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_HIGH},		//modified by zhYuan
 	{MFP_PIN_GPIO(197),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_LOW},
 	{MFP_PIN_GPIO(225),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_LOW},
 };

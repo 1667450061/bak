@@ -36,6 +36,8 @@
 #include "comip_os.h"
 #include <linux/wakelock.h>
 #include <plat/clock.h>
+#include <plat/usb.h>
+#include <linux/platform_device.h>
 
 /** @file
  * This file defines COMIP_OTG Core API
@@ -52,16 +54,21 @@ typedef struct comip_core_if comip_core_if_t;
 /** Maximum number of Endpoints/HostChannels */
 #define MAX_EPS_CHANNELS 16
 extern void set_usb_init_reg(comip_core_if_t *core_if);
-extern comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk);
+extern void set_usb_init_reg_hsic(comip_core_if_t *core_if,  usb_core_type type);
+//extern comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk);
+extern comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, const uint32_t * _ctl_reg_base_addr, struct platform_device *_dev);
 extern void comip_cil_uninit(comip_core_if_t * _core_if);
+extern void comip_cil_uninit_hsic(comip_core_if_t * _core_if);
 extern void comip_core_init(comip_core_if_t * _core_if);
 extern void comip_cil_remove(comip_core_if_t * _core_if);
-
+extern int usb_power_set(int onoff);
 extern void comip_enable_global_interrupts(comip_core_if_t * _core_if);
 extern void comip_disable_global_interrupts(comip_core_if_t * _core_if);
 extern void comip_disable_all_interrupts_except_idchng(comip_core_if_t * core_if);
 extern uint8_t comip_is_device_mode(comip_core_if_t * _core_if);
 extern uint8_t comip_is_host_mode(comip_core_if_t * _core_if);
+extern int comip_cil_suspend(comip_core_if_t * core_if);
+extern int comip_cil_resume(comip_core_if_t * core_if);
 
 extern uint8_t comip_is_dma_enable(comip_core_if_t * core_if);
 
@@ -692,7 +699,7 @@ struct comip_hcd;
 
 typedef struct os_dependent {
     /** Base address returned from ioremap() */
-    void *base;
+    void *base[2];
 
     /** Register offset for Diagnostic API */
     uint32_t reg_offset;

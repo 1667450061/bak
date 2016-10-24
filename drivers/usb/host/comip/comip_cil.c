@@ -63,15 +63,52 @@
 #include <linux/slab.h>
 #include <plat/hardware.h>
 #include <mach/comip-regs.h>
+#include <linux/gpio.h>
+#include <plat/mfp.h>
+
 #include <linux/clk.h>
 #include <linux/usb/gadget.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 
+#include <mach/regs/regs-usb.h>
+#ifdef CONFIG_USB_COMIP_OTG
 extern int comip_otg_hostmode(void);
+#endif
 static int comip_setup_params(comip_core_if_t * core_if);
 
+int usb_power_set(int onoff)
+{
 
+	int ret;
+	int host_pwren = mfp_to_gpio(MFP_PIN_GPIO(154));//HSIC 1.2V
+	int hub_reset = mfp_to_gpio(MFP_PIN_GPIO(166));
+	int hub_connect = mfp_to_gpio(MFP_PIN_GPIO(139));
+
+	/*Power on USB3503.*/
+	gpio_request(host_pwren, "usb_pwren");
+	gpio_request(hub_reset, "hub_reset");
+	gpio_request(hub_connect, "hub_reset");
+	if( onoff ) {
+		ret = gpio_direction_output(host_pwren, 1);
+		mdelay(1);
+		gpio_direction_output(hub_connect, 1);
+		mdelay(1);
+		gpio_direction_output(hub_reset, 1);
+		mdelay(1);
+		gpio_direction_output(hub_reset, 0);
+		mdelay(1);
+		gpio_direction_output(hub_reset, 1);
+		mdelay(1);
+
+	} else {
+		ret = gpio_direction_output(host_pwren, 0);
+	}
+	gpio_free(host_pwren);
+	gpio_free(hub_reset);
+	gpio_free(hub_connect);
+	return ret;
+}
 static void comip_otg_clk_enable(comip_core_if_t *core_if)
 {
 	if(!core_if->clk_enabled) {
@@ -98,26 +135,14 @@ static void comip_otg_clk_disable(comip_core_if_t *core_if)
  * @param reg_base_addr Base address of COMIP_otg core registers
  *
  */
-void set_usb_init_reg(comip_core_if_t *core_if)
-{
+void set_usb_otg_reset(comip_core_if_t *core_if)
+{ 
     grstctl_t grstctl = {.d32 = 0 };
-    gahbcfg_data_t gahbcfg = {.d32 = 0 };
-    gusbcfg_data_t gusbcfg = {.d32 = 0 };
-    int val;
     int timeout= 10;
-
-
-    comip_otg_clk_enable(core_if);
-    mdelay(1);
-
-	val = readl((void __iomem *)io_p2v(AP_PWR_PDFSM_ST1));
-	printk("LZS %s: %d, AP_PWR_PDFSM_ST1=0x%08X\n", __func__, __LINE__, val);
-
 	/*set USB PHY reset */
-	writel(0x01, (void __iomem *)io_p2v(CTL_POR_OTGPHY_CTRL));
+    writel(0x01, (void __iomem *)io_p2v(CTL_POR_OTGPHY_CTRL));
 	/*disable usb12_clk*/
-
-	comip_otg_clk_disable(core_if);
+     comip_otg_clk_disable(core_if);
 	/*set USB PHY suspend */
     writel(0x00, (void __iomem *)io_p2v(CTL_OTGPHY_SUSPENDM_CTRL));
     mdelay(10);
@@ -131,16 +156,8 @@ void set_usb_init_reg(comip_core_if_t *core_if)
 	/*set USB CORE no reset */
     writel(0x01, (void __iomem *)io_p2v(CTL_OTG_CORE_RST_CTRL));
     mdelay(1);
-
-	/*set USB0_ID detect */
-	val = readl((void __iomem *)io_p2v(CTL_OTGPHY_CHARGE_CTRL));
-	val |= 0x02;
-    writel(val, (void __iomem *)io_p2v(CTL_OTGPHY_CHARGE_CTRL));
-
-
-	/*Soft reset */
-#if 1
-	grstctl.d32 = readl(&core_if->core_global_regs->grstctl); //0xA0400010
+    if(core_if->type==OTG_HW){
+    grstctl.d32 = readl(&core_if->core_global_regs->grstctl); //0xA0400010
     grstctl.b.csftrst = 1;
     grstctl.b.hsftrst = 1;
     COMIP_WRITE_REG32(&core_if->core_global_regs->grstctl, grstctl.d32);
@@ -151,7 +168,24 @@ void set_usb_init_reg(comip_core_if_t *core_if)
   	}
   	while ( ((!(grstctl.b.ahbidle == 1)) || grstctl.b.csftrst == 1) 
   		&& ((timeout--) > 0) );
-#endif
+    }
+
+}
+void set_usb_init_reg(comip_core_if_t *core_if)
+{
+    gahbcfg_data_t gahbcfg = {.d32 = 0 };
+    gusbcfg_data_t gusbcfg = {.d32 = 0 };
+    int val;
+
+    comip_otg_clk_enable(core_if);
+    mdelay(1);
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_PDFSM_ST1));
+	printk("LZS %s: %d, AP_PWR_PDFSM_ST1=0x%08X\n", __func__, __LINE__, val);
+	/*set USB0_ID detect */
+    val = readl((void __iomem *)io_p2v(CTL_OTGPHY_CHARGE_CTRL));
+    val |= 0x02;
+    writel(val, (void __iomem *)io_p2v(CTL_OTGPHY_CHARGE_CTRL));
 
     gahbcfg.d32 = readl(&core_if->core_global_regs->gahbcfg);
     gahbcfg.b.glblintrmsk = 1;
@@ -168,6 +202,85 @@ void set_usb_init_reg(comip_core_if_t *core_if)
     mdelay(10);
 	
 }
+
+void set_usb_init_reg_hsic(comip_core_if_t *core_if, usb_core_type type)
+{
+	int val;
+	int i = 0;
+	int timeout= 100;
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_CLK_EN0));
+	val |= ((1<<6) | (1<<22));
+	writel(val, (void __iomem *)io_p2v(AP_PWR_CLK_EN0));
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_CLK_EN1));
+	val |= ((1<<10) | (1<<26));
+	writel(val, (void __iomem *)io_p2v(AP_PWR_CLK_EN1));
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_CLK_EN2));
+	val |= ((1<<6) | (1<<22));
+	writel(val, (void __iomem *)io_p2v(AP_PWR_CLK_EN2));
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_BUSLP_EN0));
+	val &= ~((1<<10) | (1<<22));
+	writel(val, (void __iomem *)io_p2v(AP_PWR_BUSLP_EN0));
+
+	writel(0x10001, (void __iomem *)io_p2v(AP_PWR_USBCLKDIV_CTL));
+	mdelay(1);
+	val = readl((void __iomem *)io_p2v(AP_PWR_PDFSM_ST1));
+
+		/*<Start HSIC PHY INIT*/
+        set_usb_otg_reset(core_if);
+
+	if(type == HSIC_HW){
+		/*set HSIC PHY no suspend */
+		writel(0x01, (void __iomem *)io_p2v(CTL_HSIC_PHY_SUSPEND_CTRL));
+
+		/*reset HSIC PHY */
+		writel(0x01, (void __iomem *)io_p2v(CTL_HSIC_PHY_POR_CTRL));
+		val = readl((void __iomem *)io_p2v(CTL_HSIC_PHY_POR_CTRL));
+		mdelay(10);
+
+		/*set HSIC PHY no reset */
+		writel(0x00, (void __iomem *)io_p2v(CTL_HSIC_PHY_POR_CTRL));
+		mdelay(1);
+
+		/*set HSIC detect */
+		val = readl((void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+		val |= (1<<9);/*enable HSIC 12M clk */
+		val |= (1<<8);/*enable HSIC function */
+		val |= (3<<1);/*HSIC PHY init to HOST*/
+		writel(val, (void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+		for(i=0; i<1000; i++);
+
+		/*set HSIC CORE no reset */
+		writel(0x01, (void __iomem *)io_p2v(CTL_HSIC_CORE_RST_CTRL));
+		for(i=0; i<1000; i++);
+
+		val = readl((void __iomem *)io_p2v(USB1_GLPMCFG));
+		val |= (1<<30);/*HSIC PHY init to HOST*/
+		writel(val, (void __iomem *)io_p2v(USB1_GLPMCFG));
+		printk("read USB1_GLPMCFG = %x\n",readl((void __iomem *)io_p2v(USB1_GLPMCFG)));
+		for(i=0; i<2000; i++);
+		/*HSIC PHY INIT END>*/
+
+		writel(0x1, (void __iomem *)io_p2v(USB1_GRSTCTL));
+		val = readl((void __iomem *)io_p2v(USB1_GRSTCTL));
+		printk("[HSIC]: USB1_GRSTCTL = 0x%08x\n", val);
+		while(((!(val & 0x80000000)) || (val & 0x01))&& ((timeout--) > 0)){
+			val = readl((void __iomem *)io_p2v(USB1_GRSTCTL));
+		} ;
+		printk(KERN_DEBUG "[HSIC]: USB1_GRSTCTL = 0x%08x timeout=%d\n", (readl((void __iomem *)io_p2v(USB1_GRSTCTL)) ),timeout);
+		writel(0x21, (void __iomem *)io_p2v(USB1_GAHBCFG));
+		writel(0x140d, (void __iomem *)io_p2v(USB1_GUSBCFG));
+
+		val = readl((void __iomem *)io_p2v(USB1_GINTMSK));
+		val |=  (1 << 29);
+		val |=  (1 << 25);
+		val |=  (1 << 24);
+		writel(0x21, (void __iomem *)io_p2v(USB1_GINTMSK));
+	}
+}
 void comip_cil_uninit(comip_core_if_t *core_if)
 {
     gusbcfg_data_t gusbcfg = {.d32 = 0 };
@@ -180,9 +293,10 @@ void comip_cil_uninit(comip_core_if_t *core_if)
 	COMIP_WRITE_REG32(&core_if->core_global_regs->gintmsk, 0x00);
 
 	gusbcfg.d32 = readl(&core_if->core_global_regs->gusbcfg);
-    gusbcfg.b.force_host_mode = 0;
+        gusbcfg.b.force_host_mode = 0;
 	COMIP_WRITE_REG32(&core_if->core_global_regs->gusbcfg, gusbcfg.d32);
-	mdelay(20);
+	//mdelay(20);
+        #if 0
 	/*enter suspend*/
 	writel(0x00, (void __iomem *)io_p2v(CTL_OTGPHY_SUSPENDM_CTRL));
 	mdelay(10);
@@ -194,7 +308,28 @@ void comip_cil_uninit(comip_core_if_t *core_if)
 	/*disable usb12_clk*/
 	if(core_if->clk)
 	comip_otg_clk_disable(core_if);
-	
+	#endif
+	//mdelay(10);
+}
+void comip_cil_uninit_hsic(comip_core_if_t *core_if)
+{
+
+	/* clear all interrupts, include endpoints and U2DMAs */
+	COMIP_WRITE_REG32(&core_if->core_global_regs->gintsts, 0xFFFFFFFF);
+
+	/* mask all interrupt */
+	COMIP_WRITE_REG32(&core_if->core_global_regs->gintmsk, 0x00);
+
+	/*disable suspend*/
+	COMIP_WRITE_REG32(&core_if->ctl_regs->physuspend, 0x00);
+	mdelay(10);
+
+	/*disable phy */
+	COMIP_WRITE_REG32(&core_if->ctl_regs->phyrstctl, 0x00);
+	mdelay(10);
+
+	clk_disable(core_if->clk);
+
 	mdelay(10);
 }
 void w_wakeup_detected(void *p)
@@ -220,12 +355,14 @@ void w_wakeup_detected(void *p)
     core_if->lx_state = COMIP_L0;
 }
 
-comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk)
+//comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk)
+comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, const uint32_t * _ctl_reg_base_addr, struct platform_device *_dev)
 {
     comip_core_if_t *core_if = 0;
     comip_host_if_t *host_if = 0;
     uint8_t *reg_base = (uint8_t *) reg_base_addr;
     int i = 0;
+	char *clk_id;
 
     COMIP_DEBUGPL(DBG_CILV, "%s(%p)\n", __func__, reg_base_addr);
     core_if = kzalloc(sizeof(comip_core_if_t), GFP_KERNEL);
@@ -236,6 +373,8 @@ comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk)
         return 0;
     }
     core_if->core_global_regs = (comip_core_global_regs_t *) reg_base;
+    if(_ctl_reg_base_addr)
+    core_if->ctl_regs = (comip_core_ctl_regs_t *)_ctl_reg_base_addr;
 
     /*
      * Allocate the Host Mode structures.
@@ -275,11 +414,52 @@ comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk)
 
     core_if->pcgcctl = (uint32_t *) (reg_base + COMIP_PCGCCTL_OFFSET);
 
-	core_if->clk = clk;
-	core_if->clk_enabled = 0;
+	switch(_dev->id)
+	{
+		case OTG_HW:
+			clk_id = "usbotg_12m_clk";
+			break;
+		case HOST_HW:
+			clk_id = "usbhost_12m_clk";
+			break;
+		case HSIC_HW:
+			clk_id = "usbhsic_12m_clk";
+			break;
+		default:
+			COMIP_WARN("invalid id\n");
+			COMIP_FREE(host_if);
+			COMIP_FREE(core_if);
+			return 0;
+	}
+	core_if->type = _dev->id;
+	core_if->clk = clk_get(&_dev->dev, clk_id);
+        printk("enter %s,core_if->type=%d\n",__func__,core_if->type);
+	if (!core_if->clk) {
+		COMIP_WARN("cannot get clock\n");
+		COMIP_FREE(host_if);
+		COMIP_FREE(core_if);
+		return 0;
+	}
 
-		/* set usb init reg */
-    //set_usb_init_reg(core_if);
+       if(_dev->id==HSIC_HW){
+	int val;
+	val = readl((void __iomem *)io_p2v(AP_PWR_HSIC_PD_CTL));
+	val |= (1<<1 | 1<<17);
+	writel(val, (void __iomem *)io_p2v(AP_PWR_HSIC_PD_CTL));
+
+	val = readl((void __iomem *)io_p2v(AP_PWR_PDFSM_ST1));
+	while(val & (7<<24))
+	{
+		val = readl((void __iomem *)io_p2v(AP_PWR_PDFSM_ST1));
+
+	}
+       }
+	printk("USB HSIC core power up success.\n");
+	/* set usb init reg */
+        if(_dev->id==HSIC_HW)
+	set_usb_init_reg_hsic(core_if,core_if->type);
+	else
+	set_usb_init_reg(core_if);
 
     /* Initiate lx_state to L3 disconnected state */
     core_if->lx_state = COMIP_L3;
@@ -287,11 +467,36 @@ comip_core_if_t *comip_cil_init(const uint32_t * reg_base_addr, struct clk *clk)
      * Store the contents of the hardware configuration registers here for
      * easy access later.
      */
-     core_if->hwcfg1.d32= 0x2aaa5554; //endpoint direction
-    core_if->hwcfg2.d32	= 0x239ff870; //include hub support bit
-    core_if->hwcfg3.d32 = 0x162044e8; //include hsic config
-    core_if->hwcfg4.d32 = 0xdff04020; // include dms mode config
-	core_if->hptxfsiz.d32 = 0x00000000;
+    #if 1
+    core_if->hwcfg1.d32 =
+        readl(&core_if->core_global_regs->ghwcfg1); //endpoint direction
+    core_if->hwcfg2.d32 =
+        readl(&core_if->core_global_regs->ghwcfg2); //include hub support bit
+    core_if->hwcfg3.d32 =
+        readl(&core_if->core_global_regs->ghwcfg3); //include hsic config
+    core_if->hwcfg4.d32 =
+        readl(&core_if->core_global_regs->ghwcfg4); // include dms mode config
+
+    /* Force host mode to get HPTXFSIZ exact power on value */
+    {
+        gusbcfg_data_t gusbcfg = {.d32 = 0 };
+        gusbcfg.d32 =  readl(&core_if->core_global_regs->gusbcfg);
+        gusbcfg.b.force_host_mode = 1;
+        COMIP_WRITE_REG32(&core_if->core_global_regs->gusbcfg, gusbcfg.d32);
+        mdelay(100); 
+        core_if->hptxfsiz.d32 =
+        readl(&core_if->core_global_regs->hptxfsiz);
+        /*gusbcfg.d32 =  readl(&core_if->core_global_regs->gusbcfg);
+        gusbcfg.b.force_host_mode = 0;
+        COMIP_WRITE_REG32(&core_if->core_global_regs->gusbcfg, gusbcfg.d32);
+        mdelay(100); */
+     }
+     #endif
+//    core_if->hwcfg1.d32= 0x2aaa5554; //endpoint direction
+  //  core_if->hwcfg2.d32	= 0x239ff870; //include hub support bit
+  //  core_if->hwcfg3.d32 = 0x162044e8; //include hsic config
+   // core_if->hwcfg4.d32 = 0xdff04020; // include dms mode config
+   // core_if->hptxfsiz.d32 = 0x00000000;
 
     COMIP_DEBUGPL(DBG_CILV, "hwcfg1=%08x\n", core_if->hwcfg1.d32);
     COMIP_DEBUGPL(DBG_CILV, "hwcfg2=%08x\n", core_if->hwcfg2.d32);
@@ -1466,6 +1671,8 @@ void comip_core_host_init(comip_core_if_t * core_if)
     }
 
     comip_enable_host_interrupts(core_if);
+	if(core_if->type == HSIC_HW)
+		comip_set_hsic_connect(core_if,1);
 }
 
 /**
@@ -1746,6 +1953,7 @@ void comip_hc_halt(comip_core_if_t * core_if,
     //TODO check it everywhere channel is disabled          
     if (!core_if->core_params->dma_desc_enable)
         hcchar.b.chen = 1;
+    hcchar.b.chen = 1;
     hcchar.b.chdis = 1;
 
     if (!core_if->dma_enable) {
@@ -2798,16 +3006,108 @@ void comip_core_reset(comip_core_if_t * core_if)
 
 uint8_t comip_is_device_mode(comip_core_if_t * _core_if)
 {
-    //return (comip_mode(_core_if) != COMIP_HOST_MODE);
-    return (!comip_otg_hostmode());
+#ifdef CONFIG_USB_COMIP_OTG
+        if(_core_if->type==HSIC_HW)
+        return 0;
+        else
+	return (!comip_otg_hostmode());
+#else
+	return (comip_mode(_core_if) != COMIP_HOST_MODE);
+#endif
 }
 
 uint8_t comip_is_host_mode(comip_core_if_t * _core_if)
 {
-    //return (comip_mode(_core_if) == COMIP_HOST_MODE);
-    return comip_otg_hostmode();
+#ifdef CONFIG_USB_COMIP_OTG
+        if(_core_if->type==HSIC_HW)
+        return 1;
+        else
+	return comip_otg_hostmode();
+#else
+	return (comip_mode(_core_if) == COMIP_HOST_MODE);
+#endif
 }
 
+int comip_cil_suspend(comip_core_if_t * core_if)
+{
+	hprt0_data_t hprt0 = {.d32 = 0};
+	pcgcctl_data_t pcgcctl = {.d32 = 0};
+	//gpwrdn_data_t gpwrdn = {.d32 = 0};
+	int timeout = 300;
+	int val = 0;
+	printk(KERN_DEBUG "enter %s\n",__func__);
+
+	hprt0.d32 = readl(core_if->host_if->hprt0);
+	hprt0.b.prtena = 0;
+	hprt0.b.prtsusp = 1;
+	COMIP_WRITE_REG32(core_if->host_if->hprt0, hprt0.d32);
+
+	do {
+		hprt0.d32 = readl(core_if->host_if->hprt0);
+		if(hprt0.b.prtsusp == 1) {
+			break;
+		}
+		mdelay(1);
+	} while (--timeout);
+	if (!timeout) {
+		COMIP_WARN("%s set prtsusp err\n", __func__);
+		//goto err;
+	}
+	udelay(10);
+
+	pcgcctl.d32 = readl(core_if->pcgcctl);
+	pcgcctl.b.stoppclk = 1;
+	COMIP_WRITE_REG32(core_if->pcgcctl, pcgcctl.d32);
+	timeout = 300;
+	do {
+		pcgcctl.d32 = readl(core_if->pcgcctl);
+		if( pcgcctl.b.stoppclk == 1 ) {
+			break;
+		}
+		mdelay(1);
+	} while (--timeout);
+	if (!timeout) {
+		COMIP_WARN("%s set stopclk err\n", __func__);
+		//goto err;
+	}
+
+	val = readl((void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+	val &= ~(1<<9);/*enable HSIC 12M clk */
+	writel(val, (void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+	//close 12M clock
+	//usbhost_clk=clk_get(NULL,"usbhost_12m_clk");
+	//clk_disable(core_if->clk);
+
+	return 0;
+}
+
+
+int comip_cil_resume(comip_core_if_t * core_if)
+{
+	pcgcctl_data_t pcgcctl = {.d32 = 0};
+	int val = 0;
+
+	COMIP_DEBUGPL((DBG_CIL | DBG_PCDV), "%s\n", __func__);
+
+	val = readl((void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+	val |= (1<<9);/*enable HSIC 12M clk */
+	writel(val, (void __iomem *)io_p2v(CTL_HSICPHY_CTRL));
+	//clk_enable(core_if->clk);
+
+	pcgcctl.d32 = readl(core_if->pcgcctl);
+	pcgcctl.b.stoppclk = 0;
+	pcgcctl.b.gatehclk = 0;
+	COMIP_WRITE_REG32(core_if->pcgcctl, pcgcctl.d32);
+	mdelay(50);
+
+	comip_set_prtresume(core_if,1);
+	mdelay(10);
+	comip_set_prtresume(core_if,0);
+	mdelay(10);
+
+	return 0;
+
+}
 /**
  * Register HCD callbacks. The callbacks are used to start and stop
  * the HCD for interrupt processing.

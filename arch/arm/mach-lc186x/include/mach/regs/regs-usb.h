@@ -6,10 +6,8 @@
 #define USB_BASE			(USB0_BASE)
 
 /*USB Global registers*/
-#ifdef CONFIG_USB_COMIP_HSIC
 #define USB_GOTGCTL			(USB_BASE + 0x0)
 #define USB_GOTGINT			(USB_BASE + 0x04)
-#endif
 #define USB_GAHBCFG			(USB_BASE + 0x08)
 #define USB_GAHBCFG_PTXFEL		(1<<8)/*Periodical TX FIFO empty level,0:half;1:full */
 #define USB_GAHBCFG_NPTXFEL		(1<<7)/*None-Periodical TX FIFO empty level,0:half;1:full */
@@ -326,7 +324,6 @@
 #define USB_DFIFO(x)			(USB_DFIFO0+(x)*0x1000)/*Frome ep1 to ep14*/
 
 /* register define for lc1860 usb-otg controller. :end */
-#ifdef CONFIG_USB_COMIP_HSIC
 /* register define for lc1860 usb-HSIC controller. :begin */
 #define USB_BASE1			(USB_HSIC_BASE)
 
@@ -352,7 +349,6 @@
 #define USB1_GPWRDN_STS_CHNGINT_MSK     (1<<18)
 #define USB1_GPWRDN_PWRDNCLMP     (1<<3)
 #define USB1_GPWRDN_PWRDNSWTCH     (1<<5)
-
 #define USB1_HPTXFSIZ	  		(USB_BASE1 + 0x100)
 #define USB1_DIEPTXF0	  		(USB_BASE1 + 0x104)
 #define USB1_HCFG			  (USB_BASE1 + 0x400)
@@ -397,6 +393,4 @@
 #define USB1_PCGCCTL_GATEHCLK	(1<<1)
 #define USB1_DFIFO0		  	(USB_BASE1 + 0x1000)
 /* register define for lc1860 usb-HSIC controller. :end */
-#endif
-
 #endif /* __ASM_ARCH_REGS_USB_H */

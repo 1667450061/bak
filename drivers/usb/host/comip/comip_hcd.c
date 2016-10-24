@@ -351,6 +351,7 @@ int comip_hcd_urb_enqueue(comip_hcd_t * hcd,
     comip_irqflags_t flags;
     int retval = 0;
     comip_qtd_t *qtd;
+    int return_flag = 0;
 
     if (!hcd->flags.b.port_connect_status) {
         /* No longer connected. */
@@ -365,7 +366,7 @@ int comip_hcd_urb_enqueue(comip_hcd_t * hcd,
     }
 
     retval =
-        comip_hcd_qtd_add(qtd, hcd, (comip_qh_t **) ep_handle, atomic_alloc);
+        comip_hcd_qtd_add(qtd, hcd, (comip_qh_t **) ep_handle, atomic_alloc, &return_flag);
     if (retval < 0) {
         ERR("COMIP OTG HCD URB Enqueue failed adding QTD. "
               "Error status %d\n", retval);
@@ -376,11 +377,17 @@ int comip_hcd_urb_enqueue(comip_hcd_t * hcd,
 
     if (hcd->core_if->dma_desc_enable && retval == 0) {
         comip_transaction_type_e tr_type;
+#if 0
         if ((qtd->qh->ep_type == UE_BULK)
             && !(qtd->urb->flags & URB_GIVEBACK_ASAP)) {
             /* Do not schedule SG transcations until qtd has URB_GIVEBACK_ASAP set */
             return 0;
         }
+#endif
+	if (return_flag == 1) {
+
+		return 0;
+	}
         COMIP_SPINLOCK_IRQSAVE(hcd->lock, &flags);
         tr_type = comip_hcd_select_transactions(hcd);
         if (tr_type != COMIP_TRANSACTION_NONE) {
@@ -870,7 +877,7 @@ static void assign_and_init_hc(comip_hcd_t * hcd, comip_qh_t * qh)
     hc->multi_count = 1;
 
     if (hcd->core_if->dma_enable) {
-        hc->xfer_buff = (uint8_t *) (unsigned int)urb->dma + urb->actual_length;
+        hc->xfer_buff = (uint8_t *) urb->dma + urb->actual_length;
 
         /* For non-dword aligned case */
         if (((uint32_t)hc->xfer_buff & 0x3)
@@ -907,7 +914,7 @@ static void assign_and_init_hc(comip_hcd_t * hcd, comip_qh_t * qh)
             hc->ep_is_in = 0;
             hc->data_pid_start = COMIP_HC_PID_SETUP;
             if (hcd->core_if->dma_enable) {
-                hc->xfer_buff = (uint8_t *) ((unsigned int)urb->setup_dma);
+                hc->xfer_buff = (uint8_t *) urb->setup_dma;
             } else {
                 hc->xfer_buff = (uint8_t *) urb->setup_packet;
             }
@@ -938,7 +945,7 @@ static void assign_and_init_hc(comip_hcd_t * hcd, comip_qh_t * qh)
 
             hc->xfer_len = 0;
             if (hcd->core_if->dma_enable) {
-                hc->xfer_buff = (uint8_t *) ((unsigned int)hcd->status_buf_dma);
+                hc->xfer_buff = (uint8_t *) hcd->status_buf_dma;
             } else {
                 hc->xfer_buff = (uint8_t *) hcd->status_buf;
             }
@@ -966,7 +973,7 @@ static void assign_and_init_hc(comip_hcd_t * hcd, comip_qh_t * qh)
             frame_desc->status = 0;
 
             if (hcd->core_if->dma_enable) {
-                hc->xfer_buff = (uint8_t *) ((unsigned int)urb->dma);
+                hc->xfer_buff = (uint8_t *) urb->dma;
             } else {
                 hc->xfer_buff = (uint8_t *) urb->buf;
             }
@@ -3020,8 +3027,8 @@ void comip_hcd_dump_state(comip_hcd_t * hcd)
                                    pipe_info));
                 COMIP_PRINTF("      transfer_buffer: %p\n",
                        urb->buf);
-                COMIP_PRINTF("      transfer_dma: %d\n",
-                       (unsigned int)urb->dma);
+                COMIP_PRINTF("      transfer_dma: %p\n",
+                       (void *)urb->dma);
                 COMIP_PRINTF("      transfer_buffer_length: %d\n",
                        urb->length);
                     COMIP_PRINTF("      actual_length: %d\n",

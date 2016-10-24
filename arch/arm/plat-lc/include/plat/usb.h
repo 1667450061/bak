@@ -3,15 +3,11 @@
 
 //bit0: usb0vbus stay up
 #define USB_PD_FLAGS_USB0VBUS 	(0x00000001)
-#ifdef CONFIG_USB_COMIP_HSIC
-/** Enumeration for COMIP HW tyep */
 typedef enum _usb_core_type{
-       OTG_HW = 0,             /*OTG host*/
-       HOST_HW = 1,    /*only host*/
-       HSIC_HW = 2             /*HSIC host*/
+	OTG_HW = 0,		/*OTG host*/
+	HOST_HW = 1,	/*only host*/
+	HSIC_HW = 2		/*HSIC host*/
 }usb_core_type;
-#endif
-
 
 struct comip_udc_platform_data {
 	unsigned int flag;		//bit0: usb0vbus

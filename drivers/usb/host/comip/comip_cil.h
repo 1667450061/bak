@@ -38,6 +38,7 @@
 #include "comip_hcd_dbg.h"
 #include "comip_otg_regs.h"
 # include <linux/irq.h>
+#include <plat/usb.h>
 
 /**
  * @file
@@ -764,10 +765,12 @@ struct comip_dev_regs_backup {
  */
 struct comip_core_if {
     uint32_t	clk_enabled;
+    usb_core_type		type;
     /*clk*/
     struct clk 					*clk;
     /** Parameters that define how the core should be configured.*/
     comip_core_params_t *core_params;
+	comip_core_ctl_regs_t *ctl_regs;
 
     /** Core Global registers starting at offset 000h. */
     comip_core_global_regs_t *core_global_regs;
@@ -995,7 +998,7 @@ extern uint32_t calc_frame_interval(comip_core_if_t * core_if);
 do { \
     hcint_data_t hcint_clear = {.d32 = 0}; \
     hcint_clear.b._intr_ = 1; \
-    writel(&(_hc_regs_)->hcint, (void volatile *)hcint_clear.d32); \
+    writel(&(_hc_regs_)->hcint, hcint_clear.d32); \
 } while (0)
 
 /*

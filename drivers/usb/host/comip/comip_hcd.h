@@ -631,7 +631,7 @@ extern comip_qtd_t *comip_hcd_qtd_create(comip_hcd_urb_t * urb,
     int atomic_alloc);
 extern void comip_hcd_qtd_init(comip_qtd_t * qtd, comip_hcd_urb_t * urb);
 extern int comip_hcd_qtd_add(comip_qtd_t * qtd, comip_hcd_t * comip_hcd,
-    comip_qh_t ** qh, int atomic_alloc);
+    comip_qh_t ** qh, int atomic_alloc, int *return_flag);
 
 /** Allocates memory for a QTD structure.
  * @return Returns the memory allocate or NULL on error. */

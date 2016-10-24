@@ -669,7 +669,7 @@ void comip_hcd_qtd_init(comip_qtd_t * qtd, comip_hcd_urb_t * urb)
  * @return 0 if successful, negative error code otherwise.
  */
 int comip_hcd_qtd_add(comip_qtd_t * qtd,
-            comip_hcd_t * hcd, comip_qh_t ** qh, int atomic_alloc)
+            comip_hcd_t * hcd, comip_qh_t ** qh, int atomic_alloc, int *return_flag)
 {
     int retval = 0;
     comip_irqflags_t flags;
@@ -692,6 +692,14 @@ int comip_hcd_qtd_add(comip_qtd_t * qtd,
     if (retval == 0) {
         COMIP_CIRCLEQ_INSERT_TAIL(&((*qh)->qtd_list), qtd,
                     qtd_list_entry);
+
+#if 1
+	if (hcd->core_if->dma_desc_enable) {
+		if (((*qh)->ep_type == UE_BULK) && !(qtd->urb->flags & URB_GIVEBACK_ASAP)) {
+			*return_flag = 1;
+		}
+	}
+#endif
     }
     COMIP_SPINUNLOCK_IRQRESTORE(hcd->lock, flags);
 

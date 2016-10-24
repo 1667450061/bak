@@ -782,7 +782,8 @@ static void cancel_dma(struct comip_ep *ep)
 }
 
 static int usb_power_state = 0;
-#ifndef CONFIG_USB_COMIP_HSIC
+
+#ifndef CONFIG_COMIP_BOARD_LC1860_EVB2
 int comip_usb_power_set(int onoff)
 {
 	static int state_count = 0;
@@ -832,7 +833,6 @@ int comip_usb_power_set(int onoff)
 	if ((count<0) || (count == 0)){
 		ret = pmic_voltage_set(PMIC_POWER_USB, 0, PMIC_POWER_VOLTAGE_DISABLE);
 		ret = pmic_voltage_set(PMIC_POWER_USB, 1, PMIC_POWER_VOLTAGE_DISABLE);
-		ret = pmic_voltage_set(PMIC_POWER_USB_ETH, 0, PMIC_POWER_VOLTAGE_DISABLE);
 		usb_power_state = 0;
 		printk( "set USB power off.\n");
 		count = 0;
@@ -840,7 +840,6 @@ int comip_usb_power_set(int onoff)
 	else if(count == 1){
 		ret = pmic_voltage_set(PMIC_POWER_USB, 0, PMIC_POWER_VOLTAGE_ENABLE);
 		ret = pmic_voltage_set(PMIC_POWER_USB, 1, PMIC_POWER_VOLTAGE_ENABLE);
-		ret = pmic_voltage_set(PMIC_POWER_USB_ETH, 0, PMIC_POWER_VOLTAGE_ENABLE);
 		usb_power_state = 1;
 		printk( "set USB power on.\n");
 	}
@@ -854,9 +853,7 @@ int comip_usb_power_set(int onoff)
 
 	return 0;
 }
-
 #endif
-
 static int comip_usb_power_get(void)
 {
 	return usb_power_state;
@@ -878,9 +875,8 @@ static int u2d_usb_init(void)
 	mdelay(1);
 	u2d_soft_dis(1);
 	mdelay(2);
-
-#ifndef CONFIG_USB_COMIP_HSIC
-
+//#if 1
+#ifndef CONFIG_COMIP_BOARD_LC1860_EVB2
 	if (!cpu_is_lc1860_eco2()) {
 		comip_u2d_write_reg32(0x3, CTL_OTG_CORE_CTRL);
 	}
@@ -1075,7 +1071,7 @@ static void u2d_ep0_out_start(struct comip_u2d *dev)
 
 	memset(dev->ep0_out_desc, 0, sizeof(struct comip_dma_des));
 	/* dma phy addr */
-	dev->ep0_out_desc->buf_addr = (u32)dev->ep0_req.req.dma;
+	dev->ep0_out_desc->buf_addr = dev->ep0_req.req.dma;
 	/* status init */
 	val_set(dev->ep0_out_desc->status, STAT_IO_BS_SHIFT, 2, STAT_IO_BS_H_BUSY);
 	val_set(dev->ep0_out_desc->status, STAT_IO_L_SHIFT, 1, 1);
@@ -1161,7 +1157,7 @@ static int u2d_ep_out_start(struct comip_ep *ep, struct comip_request *req)
 				       req->req.length, DMA_FROM_DEVICE);
 		req->map = 1;
 	} else {
-		DBG("req->req.dma:%d\n",(u32)req->req.dma);
+		DBG("req->req.dma:%d\n",req->req.dma);
 	}
 
 	/* write the data address to DMA register */
@@ -1311,8 +1307,8 @@ static void u2d_disable(struct comip_u2d *dev)
 	/* mask all interrupt */
 	val = 0x00;
 	comip_u2d_write_reg32(val, USB_GINTMSK);
-#ifndef CONFIG_USB_COMIP_HSIC
-
+#ifndef CONFIG_COMIP_BOARD_LC1860_EVB2
+//#if 1
 	/*set USB PHY suspend */
 	val = 0x00;
 	comip_u2d_write_reg32(val, CTL_OTGPHY_SUSPENDM_CTRL);
@@ -1336,7 +1332,9 @@ static void u2d_disable(struct comip_u2d *dev)
 
 	ep0_idle(dev);
 	dev->gadget.speed = USB_SPEED_UNKNOWN;
-#ifndef CONFIG_USB_COMIP_HSIC
+
+#ifndef CONFIG_COMIP_BOARD_LC1860_EVB2
+//#if 1
 	u2d_clk_set(0);
 #endif
 
@@ -3399,7 +3397,7 @@ clkreqfail:
 	return retval;
 }
 
-static int __exit comip_u2d_remove(struct platform_device *pdev)
+static int comip_u2d_remove(struct platform_device *pdev)
 {
 	//unsigned int val;
 	struct comip_u2d *dev = platform_get_drvdata(pdev);
@@ -3450,7 +3448,8 @@ static struct platform_driver comip_u2d_driver = {
 			.name = "comip-u2d",
 			.owner  = THIS_MODULE,
 		   },
-	.remove = __exit_p(comip_u2d_remove),
+	.probe = comip_u2d_probe,
+	.remove = comip_u2d_remove,
 #ifdef CONFIG_PM
 	.suspend = comip_u2d_suspend,
 	.resume = comip_u2d_resume,
