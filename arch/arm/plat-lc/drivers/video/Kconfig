@@ -51,6 +51,12 @@ if (FB_COMIP || FB_COMIP2)
 		LCD ESD protect
 
 menu "Select LCD Panel"
+	config OLED_AUO_RM69052
+		boolean "AUO (RM69052 Driver IC) oled panel"
+		---help---
+		AUO (RM69052 Driver IC) It`s resolution is 720 x 1280.
+		This panel is connected with MIPI interface.
+
 	config LCD_BYD_8937S
 		boolean "BYD 8937S(BM397WV Driver IC) lcd panel"
 		---help---

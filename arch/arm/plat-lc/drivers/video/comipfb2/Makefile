@@ -45,3 +45,4 @@ obj-$(CONFIG_LCD_HT_H8394D) += lcd_ht_h8394d.o
 obj-$(CONFIG_LCD_HS_EK79007) += lcd_ws_l706_mipi_ek79007_ips.o
 #obj-$(CONFIG_LCD_HS_EK79007) += lcd_hs_ek79007.o
 
+obj-$(CONFIG_OLED_AUO_RM69052) += oled_auo_rm69052.o

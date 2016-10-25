@@ -514,6 +514,8 @@ static struct mfp_pin_cfg comip_mfp_cfg[] = {
 	{MFP_PIN_GPIO(105), 	MFP_PIN_MODE_GPIO},
 	{MFP_PIN_GPIO(104), 	MFP_PIN_MODE_GPIO},
 	{MFP_PIN_GPIO(102), 	MFP_PIN_MODE_GPIO},		//for VHSIC_1V2 enable
+
+	{MFP_PIN_GPIO(251),     MFP_PIN_MODE_GPIO},     //oled power enable
 };
 
 static struct mfp_pull_cfg comip_mfp_pull_cfg[] = {
@@ -577,6 +579,8 @@ static struct mfp_pull_cfg comip_mfp_pull_cfg[] = {
 	{MFP_PIN_GPIO(211), 	MFP_PULL_UP},
 	{MFP_PIN_GPIO(243), 	MFP_PULL_UP},
 #endif
+
+	{MFP_PIN_GPIO(251),     MFP_PULL_UP},
 };
 
 static void __init comip_init_mfp(void)
@@ -598,6 +602,8 @@ static struct mfp_gpio_cfg comip_init_mfp_lp_gpio_cfg[] = {
 	{MFP_PIN_GPIO(102),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_HIGH},		//modified by zhYuan
 	{MFP_PIN_GPIO(197),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_LOW},
 	{MFP_PIN_GPIO(225),		MFP_GPIO_OUTPUT,		MFP_GPIO_VALUE_LOW},
+
+	{MFP_PIN_GPIO(251),     MFP_GPIO_OUTPUT,        MFP_GPIO_VALUE_HIGH},
 };
 
 static void __init comip_init_gpio_lp(void)
@@ -765,6 +771,8 @@ static struct pmic_reg_st lc1160_init_regs[] = {
 	{LC1160_REG_LDOA5CR, 0xc4, 0xff},
 	{LC1160_REG_LDOA6CR, 0xcd, 0xff},
 	{LC1160_REG_DC7OVS0, 0x5a, 0xff},
+
+	{LC1160_REG_DC8OVS0, 0x79, 0xff},	//BUCK8 3.3V
 };
 
 static struct lc1160_pmic_platform_data lc1160_pmic_info = {
@@ -1612,6 +1620,25 @@ static int comip_lcd_power(int onoff)
 static int comip_lcd_detect_dev(void)
 {
 	return LCD_ID_TRULY_H8394A;
+}
+*/
+#elif defined(CONFIG_OLED_AUO_RM69052)
+static int comip_lcd_power(int onoff)
+{
+	if (onoff) {
+		pmic_voltage_set(PMIC_POWER_LCD_CORE, 0, PMIC_POWER_VOLTAGE_ENABLE);
+		pmic_voltage_set(PMIC_POWER_LCD_IO, 0, PMIC_POWER_VOLTAGE_ENABLE);
+	} else {
+		pmic_voltage_set(PMIC_POWER_LCD_CORE, 0, PMIC_POWER_VOLTAGE_DISABLE);
+		pmic_voltage_set(PMIC_POWER_LCD_IO, 0, PMIC_POWER_VOLTAGE_DISABLE);
+	}
+
+	return 0;
+}
+/*
+static int comip_lcd_detect_dev(void)
+{
+	return OLED_ID_AUO_RM69052;
 }
 */
 #endif
